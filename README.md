@@ -23,6 +23,7 @@ The service exposes liveness and database-backed readiness endpoints, manages a 
 
 ```bash
 export RELAYFORGE_MASTER_KEY="$(openssl rand -base64 32)"
+export RELAYFORGE_API_KEY="$(openssl rand -hex 32)"
 make run
 curl http://localhost:8080/health/live
 ```
@@ -40,6 +41,20 @@ curl http://localhost:8080/health/live
 | `DATABASE_MAX_CONNECTIONS` | `10` |
 | `DATABASE_CONNECT_TIMEOUT` | `5s` |
 | `RELAYFORGE_MASTER_KEY` | required 32-byte key encoded as base64 |
+| `RELAYFORGE_API_KEY` | required bearer token with at least 32 characters |
+| `ALLOW_HTTP_TARGETS` | `false` |
+| `ALLOW_PRIVATE_TARGETS` | `false` |
+
+## Endpoint API
+
+```bash
+curl -X POST http://localhost:8080/v1/endpoints \
+  -H "Authorization: Bearer $RELAYFORGE_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"name":"billing","url":"https://example.com/webhooks"}'
+```
+
+The generated signing secret is returned only by the create operation. Subsequent reads never expose the encrypted value.
 
 ## License
 

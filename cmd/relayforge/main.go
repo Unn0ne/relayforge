@@ -14,6 +14,9 @@ import (
 	"github.com/Unn0ne/relayforge/internal/api"
 	"github.com/Unn0ne/relayforge/internal/config"
 	"github.com/Unn0ne/relayforge/internal/database"
+	"github.com/Unn0ne/relayforge/internal/endpoint"
+	"github.com/Unn0ne/relayforge/internal/secure"
+	"github.com/Unn0ne/relayforge/internal/store"
 )
 
 func main() {
@@ -44,9 +47,19 @@ func run() error {
 	}
 	defer db.Close()
 
+	secretBox, err := secure.NewBox(cfg.MasterKey)
+	if err != nil {
+		return fmt.Errorf("initialize secret encryption: %w", err)
+	}
+	repository := store.New(db.Pool())
+	endpointService := endpoint.New(repository, secretBox, endpoint.Options{
+		AllowHTTP:           cfg.AllowHTTP,
+		AllowPrivateTargets: cfg.AllowPrivateTargets,
+	})
+
 	server := &http.Server{
 		Addr:              cfg.HTTPAddr,
-		Handler:           api.New(logger, db.Ping).Handler(),
+		Handler:           api.New(logger, db.Ping, cfg.APIKey, endpointService).Handler(),
 		ReadHeaderTimeout: cfg.ReadHeaderTimeout,
 	}
 
