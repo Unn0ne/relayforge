@@ -81,6 +81,18 @@ curl -X POST \
 
 Inspection returns the source event and the immutable attempt history. Only dead deliveries can be replayed. Replay preserves attempt numbering and grants a fresh endpoint-sized retry budget.
 
+## Webhook protocol
+
+RelayForge sends the event payload as a JSON `POST` request with these headers:
+
+- `X-RelayForge-Delivery`
+- `X-RelayForge-Event-ID`
+- `X-RelayForge-Event`
+- `X-RelayForge-Timestamp`
+- `X-RelayForge-Signature`
+
+The signature format is `v1=<hex HMAC-SHA256>`. The signed bytes are `<timestamp>.<delivery_id>.<raw_body>`. Redirects are never followed, environment proxies are ignored, and every resolved IP is checked before a connection is opened.
+
 ## License
 
 MIT
