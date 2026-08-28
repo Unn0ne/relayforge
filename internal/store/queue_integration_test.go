@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"os"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -271,39 +272,42 @@ func openIntegrationStore(t *testing.T) (*Store, *pgxpool.Pool) {
 	}
 
 	ctx := context.Background()
-	pool, err := pgxpool.New(ctx, databaseURL)
+	admin, err := pgxpool.New(ctx, databaseURL)
 	if err != nil {
 		t.Fatal(err)
 	}
-
-	resetSchema(t, ctx, pool)
+	schema := "relayforge_store_" + strings.ReplaceAll(uuid.NewString(), "-", "")
+	if _, err = admin.Exec(ctx, "CREATE SCHEMA "+pgx.Identifier{schema}.Sanitize()); err != nil {
+		admin.Close()
+		t.Fatal(err)
+	}
+	var pool *pgxpool.Pool
+	t.Cleanup(func() {
+		if pool != nil {
+			pool.Close()
+		}
+		if _, cleanupErr := admin.Exec(context.Background(), "DROP SCHEMA "+pgx.Identifier{schema}.Sanitize()+" CASCADE"); cleanupErr != nil {
+			t.Error(cleanupErr)
+		}
+		admin.Close()
+	})
+	poolConfig, err := pgxpool.ParseConfig(databaseURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	poolConfig.ConnConfig.RuntimeParams["search_path"] = schema
+	pool, err = pgxpool.NewWithConfig(ctx, poolConfig)
+	if err != nil {
+		t.Fatal(err)
+	}
 	migration, err := os.ReadFile("../../migrations/001_init.up.sql")
 	if err != nil {
-		pool.Close()
 		t.Fatal(err)
 	}
 	if _, err = pool.Exec(ctx, string(migration)); err != nil {
-		pool.Close()
 		t.Fatal(err)
 	}
-
-	t.Cleanup(func() {
-		resetSchema(t, context.Background(), pool)
-		pool.Close()
-	})
 	return New(pool), pool
-}
-
-func resetSchema(t *testing.T, ctx context.Context, pool *pgxpool.Pool) {
-	t.Helper()
-	_, err := pool.Exec(ctx, `
-        DROP TABLE IF EXISTS delivery_attempts;
-        DROP TABLE IF EXISTS deliveries;
-        DROP TABLE IF EXISTS events;
-        DROP TABLE IF EXISTS endpoints`)
-	if err != nil {
-		t.Fatal(err)
-	}
 }
 
 func seedDelivery(t *testing.T, ctx context.Context, pool *pgxpool.Pool, maxAttempts int) string {

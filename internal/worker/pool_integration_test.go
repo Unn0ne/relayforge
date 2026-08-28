@@ -10,6 +10,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -19,6 +20,8 @@ import (
 	"github.com/Unn0ne/relayforge/internal/secure"
 	"github.com/Unn0ne/relayforge/internal/store"
 	"github.com/Unn0ne/relayforge/internal/webhook"
+	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -28,24 +31,41 @@ func TestWorkerDeliveryIntegration(t *testing.T) {
 		t.Skip("TEST_DATABASE_URL is not set")
 	}
 	ctx := context.Background()
-	database, err := pgxpool.New(ctx, databaseURL)
+	admin, err := pgxpool.New(ctx, databaseURL)
 	if err != nil {
 		t.Fatal(err)
 	}
-	resetWorkerSchema(t, ctx, database)
+	schema := "relayforge_worker_" + strings.ReplaceAll(uuid.NewString(), "-", "")
+	if _, err = admin.Exec(ctx, "CREATE SCHEMA "+pgx.Identifier{schema}.Sanitize()); err != nil {
+		admin.Close()
+		t.Fatal(err)
+	}
+	var database *pgxpool.Pool
+	t.Cleanup(func() {
+		if database != nil {
+			database.Close()
+		}
+		if _, cleanupErr := admin.Exec(context.Background(), "DROP SCHEMA "+pgx.Identifier{schema}.Sanitize()+" CASCADE"); cleanupErr != nil {
+			t.Error(cleanupErr)
+		}
+		admin.Close()
+	})
+	poolConfig, err := pgxpool.ParseConfig(databaseURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	poolConfig.ConnConfig.RuntimeParams["search_path"] = schema
+	database, err = pgxpool.NewWithConfig(ctx, poolConfig)
+	if err != nil {
+		t.Fatal(err)
+	}
 	migration, err := os.ReadFile("../../migrations/001_init.up.sql")
 	if err != nil {
-		database.Close()
 		t.Fatal(err)
 	}
 	if _, err = database.Exec(ctx, string(migration)); err != nil {
-		database.Close()
 		t.Fatal(err)
 	}
-	t.Cleanup(func() {
-		resetWorkerSchema(t, context.Background(), database)
-		database.Close()
-	})
 
 	type receivedRequest struct {
 		body       []byte
@@ -155,17 +175,5 @@ func TestWorkerDeliveryIntegration(t *testing.T) {
 	}
 	if request.signature != webhook.Sign([]byte(created.Secret), timestamp, request.deliveryID, request.body) {
 		t.Fatalf("signature = %q", request.signature)
-	}
-}
-
-func resetWorkerSchema(t *testing.T, ctx context.Context, database *pgxpool.Pool) {
-	t.Helper()
-	_, err := database.Exec(ctx, `
-        DROP TABLE IF EXISTS delivery_attempts;
-        DROP TABLE IF EXISTS deliveries;
-        DROP TABLE IF EXISTS events;
-        DROP TABLE IF EXISTS endpoints`)
-	if err != nil {
-		t.Fatal(err)
 	}
 }
