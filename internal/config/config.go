@@ -20,6 +20,9 @@ type Config struct {
 	DatabaseMaxConnections int32
 	DatabaseConnectTimeout time.Duration
 	MasterKey              []byte
+	APIKey                 string
+	AllowHTTP              bool
+	AllowPrivateTargets    bool
 }
 
 func Load() (Config, error) {
@@ -68,6 +71,21 @@ func Load() (Config, error) {
 		return Config{}, err
 	}
 
+	apiKey, err := secret("RELAYFORGE_API_KEY", 32)
+	if err != nil {
+		return Config{}, err
+	}
+
+	allowHTTP, err := boolean("ALLOW_HTTP_TARGETS", false)
+	if err != nil {
+		return Config{}, err
+	}
+
+	allowPrivateTargets, err := boolean("ALLOW_PRIVATE_TARGETS", false)
+	if err != nil {
+		return Config{}, err
+	}
+
 	return Config{
 		HTTPAddr:               value("HTTP_ADDR", ":8080"),
 		ReadHeaderTimeout:      readHeaderTimeout,
@@ -78,7 +96,21 @@ func Load() (Config, error) {
 		DatabaseMaxConnections: int32(databaseMaxConnections),
 		DatabaseConnectTimeout: databaseConnectTimeout,
 		MasterKey:              masterKey,
+		APIKey:                 apiKey,
+		AllowHTTP:              allowHTTP,
+		AllowPrivateTargets:    allowPrivateTargets,
 	}, nil
+}
+
+func secret(name string, minimumLength int) (string, error) {
+	result := strings.TrimSpace(os.Getenv(name))
+	if result == "" {
+		return "", fmt.Errorf("%s is required", name)
+	}
+	if len(result) < minimumLength {
+		return "", fmt.Errorf("%s must be at least %d characters", name, minimumLength)
+	}
+	return result, nil
 }
 
 func encryptionKey(name string) ([]byte, error) {
@@ -120,6 +152,15 @@ func integer(key string, fallback int) (int, error) {
 	parsed, err := strconv.Atoi(raw)
 	if err != nil {
 		return 0, fmt.Errorf("parse %s: %w", key, err)
+	}
+	return parsed, nil
+}
+
+func boolean(key string, fallback bool) (bool, error) {
+	raw := value(key, strconv.FormatBool(fallback))
+	parsed, err := strconv.ParseBool(raw)
+	if err != nil {
+		return false, fmt.Errorf("parse %s: %w", key, err)
 	}
 	return parsed, nil
 }

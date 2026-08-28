@@ -32,6 +32,9 @@ func TestLoad(t *testing.T) {
 	if len(cfg.MasterKey) != 32 {
 		t.Fatalf("MasterKey length = %d", len(cfg.MasterKey))
 	}
+	if cfg.APIKey != "01234567890123456789012345678901" {
+		t.Fatalf("APIKey = %q", cfg.APIKey)
+	}
 }
 
 func TestLoadRejectsInvalidPoolRange(t *testing.T) {
@@ -71,6 +74,24 @@ func TestLoadRejectsInvalidMasterKey(t *testing.T) {
 	}
 }
 
+func TestLoadRejectsShortAPIKey(t *testing.T) {
+	setValidEnvironment(t)
+	t.Setenv("RELAYFORGE_API_KEY", "short")
+
+	if _, err := Load(); err == nil {
+		t.Fatal("expected short API key error")
+	}
+}
+
+func TestLoadRejectsInvalidBoolean(t *testing.T) {
+	setValidEnvironment(t)
+	t.Setenv("ALLOW_HTTP_TARGETS", "sometimes")
+
+	if _, err := Load(); err == nil {
+		t.Fatal("expected boolean validation error")
+	}
+}
+
 func setValidEnvironment(t *testing.T) {
 	t.Helper()
 	t.Setenv("HTTP_ADDR", ":8080")
@@ -82,4 +103,7 @@ func setValidEnvironment(t *testing.T) {
 	t.Setenv("DATABASE_MAX_CONNECTIONS", "10")
 	t.Setenv("DATABASE_CONNECT_TIMEOUT", "3s")
 	t.Setenv("RELAYFORGE_MASTER_KEY", base64.StdEncoding.EncodeToString(make([]byte, 32)))
+	t.Setenv("RELAYFORGE_API_KEY", "01234567890123456789012345678901")
+	t.Setenv("ALLOW_HTTP_TARGETS", "false")
+	t.Setenv("ALLOW_PRIVATE_TARGETS", "false")
 }
