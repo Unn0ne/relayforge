@@ -2,6 +2,7 @@ package worker
 
 import (
 	"context"
+	"errors"
 	"io"
 	"log/slog"
 	"testing"
@@ -65,6 +66,68 @@ func TestProcessSchedulesRetry(t *testing.T) {
 	}
 }
 
+func TestProcessRecordsAttemptMetric(t *testing.T) {
+	completedAt := time.Now().UTC()
+	observer := &observerStub{}
+	pool := testPool(t, &queueStub{}, dispatcherStub{result: webhook.Result{
+		Decision:    delivery.DecisionDiscard,
+		Duration:    12 * time.Millisecond,
+		StartedAt:   completedAt.Add(-12 * time.Millisecond),
+		CompletedAt: completedAt,
+	}})
+	pool.observer = observer
+
+	if err := pool.process(context.Background(), "worker-id", testJob()); err != nil {
+		t.Fatal(err)
+	}
+	if observer.decision != delivery.DecisionDiscard || observer.duration != 12*time.Millisecond {
+		t.Fatalf("observer = %+v", observer)
+	}
+}
+
+func TestRunObservesWorkerLifecycle(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	queue := &runQueue{job: testJob(), cancel: cancel}
+	completedAt := time.Now().UTC()
+	pool := testPool(t, queue, dispatcherStub{result: webhook.Result{
+		Decision:    delivery.DecisionSucceed,
+		Duration:    time.Millisecond,
+		StartedAt:   completedAt.Add(-time.Millisecond),
+		CompletedAt: completedAt,
+	}})
+	observer := &observerStub{}
+	pool.observer = observer
+
+	pool.Run(ctx)
+
+	if len(observer.claims) != 1 || observer.claims[0] != "claimed" {
+		t.Fatalf("claims = %v", observer.claims)
+	}
+	if observer.inFlight != 0 || observer.finishErrors != 0 {
+		t.Fatalf("observer = %+v", observer)
+	}
+}
+
+func TestRunRecordsFinishError(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	queue := &runQueue{job: testJob(), cancel: cancel, finishErr: errors.New("write failed")}
+	completedAt := time.Now().UTC()
+	pool := testPool(t, queue, dispatcherStub{result: webhook.Result{
+		Decision:    delivery.DecisionRetry,
+		Duration:    time.Millisecond,
+		StartedAt:   completedAt.Add(-time.Millisecond),
+		CompletedAt: completedAt,
+	}})
+	observer := &observerStub{}
+	pool.observer = observer
+
+	pool.Run(ctx)
+
+	if observer.finishErrors != 1 || observer.inFlight != 0 {
+		t.Fatalf("observer = %+v", observer)
+	}
+}
+
 func testPool(t *testing.T, queue Queue, dispatcher Dispatcher) *Pool {
 	t.Helper()
 	policy, err := delivery.NewRetryPolicy(time.Second, time.Minute, 0)
@@ -114,6 +177,51 @@ type dispatcherStub struct {
 	result webhook.Result
 }
 
+type runQueue struct {
+	job       *store.Job
+	cancel    context.CancelFunc
+	finishErr error
+}
+
+func (q *runQueue) ClaimDelivery(ctx context.Context, _ string, _ time.Duration) (*store.Job, error) {
+	if q.job != nil {
+		job := q.job
+		q.job = nil
+		return job, nil
+	}
+	return nil, ctx.Err()
+}
+
+func (q *runQueue) FinishAttempt(context.Context, store.AttemptResult) (delivery.Status, error) {
+	q.cancel()
+	return delivery.StatusSucceeded, q.finishErr
+}
+
 func (d dispatcherStub) Deliver(context.Context, webhook.Request) webhook.Result {
 	return d.result
+}
+
+type observerStub struct {
+	decision     delivery.Decision
+	duration     time.Duration
+	claims       []string
+	finishErrors int
+	inFlight     float64
+}
+
+func (o *observerStub) ObserveClaim(result string) {
+	o.claims = append(o.claims, result)
+}
+
+func (o *observerStub) ObserveAttempt(decision delivery.Decision, duration time.Duration) {
+	o.decision = decision
+	o.duration = duration
+}
+
+func (o *observerStub) ObserveFinishError() {
+	o.finishErrors++
+}
+
+func (o *observerStub) AddInFlight(delta float64) {
+	o.inFlight += delta
 }

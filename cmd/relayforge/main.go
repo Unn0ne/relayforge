@@ -17,6 +17,7 @@ import (
 	"github.com/Unn0ne/relayforge/internal/delivery"
 	"github.com/Unn0ne/relayforge/internal/endpoint"
 	"github.com/Unn0ne/relayforge/internal/eventing"
+	"github.com/Unn0ne/relayforge/internal/observability"
 	"github.com/Unn0ne/relayforge/internal/secure"
 	"github.com/Unn0ne/relayforge/internal/store"
 	"github.com/Unn0ne/relayforge/internal/webhook"
@@ -56,6 +57,7 @@ func run() error {
 		return fmt.Errorf("initialize secret encryption: %w", err)
 	}
 	repository := store.New(db.Pool())
+	metrics := observability.NewMetrics(repository, db.Pool())
 	endpointService := endpoint.New(repository, secretBox, endpoint.Options{
 		AllowHTTP:           cfg.AllowHTTP,
 		AllowPrivateTargets: cfg.AllowPrivateTargets,
@@ -79,6 +81,7 @@ func run() error {
 		RetryPolicy:      retryPolicy,
 		CircuitThreshold: cfg.CircuitFailureThreshold,
 		CircuitCooldown:  cfg.CircuitCooldown,
+		Observer:         metrics,
 	})
 	if err != nil {
 		return fmt.Errorf("initialize delivery workers: %w", err)
@@ -87,11 +90,13 @@ func run() error {
 	server := &http.Server{
 		Addr: cfg.HTTPAddr,
 		Handler: api.New(logger, api.Dependencies{
-			Readiness:  db.Ping,
-			APIKey:     cfg.APIKey,
-			Endpoints:  endpointService,
-			Events:     eventService,
-			Deliveries: deliveryService,
+			Readiness:    db.Ping,
+			APIKey:       cfg.APIKey,
+			Endpoints:    endpointService,
+			Events:       eventService,
+			Deliveries:   deliveryService,
+			Metrics:      metrics.Handler(),
+			HTTPObserver: metrics,
 		}).Handler(),
 		ReadHeaderTimeout: cfg.ReadHeaderTimeout,
 	}

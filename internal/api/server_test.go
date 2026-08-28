@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 )
 
 func TestLiveness(t *testing.T) {
@@ -53,6 +54,60 @@ func TestReadiness(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestMetricsArePublicAndObservedByRoute(t *testing.T) {
+	observer := &httpObserverStub{}
+	handler := New(testLogger(), Dependencies{
+		Readiness: func(context.Context) error { return nil },
+		APIKey:    "test-api-key",
+		Metrics: http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			w.WriteHeader(http.StatusNoContent)
+		}),
+		HTTPObserver: observer,
+	}).Handler()
+	request := httptest.NewRequest(http.MethodGet, "/metrics", nil)
+	response := httptest.NewRecorder()
+
+	handler.ServeHTTP(response, request)
+
+	if response.Code != http.StatusNoContent {
+		t.Fatalf("status = %d", response.Code)
+	}
+	if observer.method != http.MethodGet || observer.route != "GET /metrics" || observer.status != http.StatusNoContent {
+		t.Fatalf("observation = %+v", observer)
+	}
+}
+
+func TestUnmatchedRequestUsesBoundedMetricLabel(t *testing.T) {
+	observer := &httpObserverStub{}
+	handler := New(testLogger(), Dependencies{
+		Readiness:    func(context.Context) error { return nil },
+		APIKey:       "test-api-key",
+		HTTPObserver: observer,
+	}).Handler()
+	request := httptest.NewRequest(http.MethodGet, "/missing/unique-id", nil)
+	response := httptest.NewRecorder()
+
+	handler.ServeHTTP(response, request)
+
+	if observer.route != "unmatched" || observer.status != http.StatusNotFound {
+		t.Fatalf("observation = %+v", observer)
+	}
+}
+
+type httpObserverStub struct {
+	method   string
+	route    string
+	status   int
+	duration time.Duration
+}
+
+func (o *httpObserverStub) ObserveHTTPRequest(method, route string, status int, duration time.Duration) {
+	o.method = method
+	o.route = route
+	o.status = status
+	o.duration = duration
 }
 
 func testLogger() *slog.Logger {

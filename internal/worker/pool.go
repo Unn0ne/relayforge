@@ -24,6 +24,13 @@ type Dispatcher interface {
 	Deliver(context.Context, webhook.Request) webhook.Result
 }
 
+type Observer interface {
+	ObserveClaim(string)
+	ObserveAttempt(delivery.Decision, time.Duration)
+	ObserveFinishError()
+	AddInFlight(float64)
+}
+
 type Config struct {
 	Concurrency      int
 	PollInterval     time.Duration
@@ -32,6 +39,7 @@ type Config struct {
 	RetryPolicy      delivery.RetryPolicy
 	CircuitThreshold int
 	CircuitCooldown  time.Duration
+	Observer         Observer
 }
 
 type Pool struct {
@@ -41,6 +49,7 @@ type Pool struct {
 	config     Config
 	instanceID string
 	sample     func() float64
+	observer   Observer
 }
 
 func New(queue Queue, dispatcher Dispatcher, logger *slog.Logger, config Config) (*Pool, error) {
@@ -53,6 +62,10 @@ func New(queue Queue, dispatcher Dispatcher, logger *slog.Logger, config Config)
 	if config.CircuitThreshold < 1 || config.CircuitCooldown <= 0 {
 		return nil, errors.New("circuit breaker configuration is invalid")
 	}
+	observer := config.Observer
+	if observer == nil {
+		observer = noOpObserver{}
+	}
 	return &Pool{
 		queue:      queue,
 		dispatcher: dispatcher,
@@ -60,6 +73,7 @@ func New(queue Queue, dispatcher Dispatcher, logger *slog.Logger, config Config)
 		config:     config,
 		instanceID: uuid.NewString(),
 		sample:     rand.Float64,
+		observer:   observer,
 	}, nil
 }
 
@@ -85,6 +99,7 @@ func (p *Pool) runWorker(ctx context.Context, workerID string) {
 			if ctx.Err() != nil {
 				return
 			}
+			p.observer.ObserveClaim("error")
 			p.logger.Error("claim delivery", "worker_id", workerID, "error", err)
 			if !wait(ctx, p.config.PollInterval) {
 				return
@@ -92,13 +107,19 @@ func (p *Pool) runWorker(ctx context.Context, workerID string) {
 			continue
 		}
 		if job == nil {
+			p.observer.ObserveClaim("empty")
 			if !wait(ctx, p.config.PollInterval) {
 				return
 			}
 			continue
 		}
+		p.observer.ObserveClaim("claimed")
+		p.observer.AddInFlight(1)
 
-		if err = p.process(ctx, workerID, job); err != nil {
+		err = p.process(ctx, workerID, job)
+		p.observer.AddInFlight(-1)
+		if err != nil {
+			p.observer.ObserveFinishError()
 			if errors.Is(err, store.ErrLeaseLost) {
 				p.logger.Warn("delivery lease lost", "delivery_id", job.Delivery.ID, "attempt", job.Delivery.AttemptCount)
 			} else {
@@ -119,6 +140,7 @@ func (p *Pool) process(ctx context.Context, workerID string, job *store.Job) err
 		Payload:          job.Event.Payload,
 		Timeout:          job.Endpoint.Timeout,
 	})
+	p.observer.ObserveAttempt(result.Decision, result.Duration)
 
 	finish := store.AttemptResult{
 		DeliveryID:    job.Delivery.ID,
@@ -164,6 +186,16 @@ func (p *Pool) process(ctx context.Context, workerID string, job *store.Job) err
 	)
 	return nil
 }
+
+type noOpObserver struct{}
+
+func (noOpObserver) ObserveClaim(string) {}
+
+func (noOpObserver) ObserveAttempt(delivery.Decision, time.Duration) {}
+
+func (noOpObserver) ObserveFinishError() {}
+
+func (noOpObserver) AddInFlight(float64) {}
 
 func wait(ctx context.Context, duration time.Duration) bool {
 	timer := time.NewTimer(duration)

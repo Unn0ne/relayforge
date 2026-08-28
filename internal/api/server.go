@@ -11,32 +11,42 @@ import (
 )
 
 type Server struct {
-	logger     *slog.Logger
-	readiness  func(context.Context) error
-	apiKey     string
-	endpoints  EndpointService
-	events     EventService
-	deliveries DeliveryService
-	startedAt  time.Time
+	logger       *slog.Logger
+	readiness    func(context.Context) error
+	apiKey       string
+	endpoints    EndpointService
+	events       EventService
+	deliveries   DeliveryService
+	metrics      http.Handler
+	httpObserver HTTPObserver
+	startedAt    time.Time
+}
+
+type HTTPObserver interface {
+	ObserveHTTPRequest(string, string, int, time.Duration)
 }
 
 type Dependencies struct {
-	Readiness  func(context.Context) error
-	APIKey     string
-	Endpoints  EndpointService
-	Events     EventService
-	Deliveries DeliveryService
+	Readiness    func(context.Context) error
+	APIKey       string
+	Endpoints    EndpointService
+	Events       EventService
+	Deliveries   DeliveryService
+	Metrics      http.Handler
+	HTTPObserver HTTPObserver
 }
 
 func New(logger *slog.Logger, dependencies Dependencies) *Server {
 	return &Server{
-		logger:     logger,
-		readiness:  dependencies.Readiness,
-		apiKey:     dependencies.APIKey,
-		endpoints:  dependencies.Endpoints,
-		events:     dependencies.Events,
-		deliveries: dependencies.Deliveries,
-		startedAt:  time.Now().UTC(),
+		logger:       logger,
+		readiness:    dependencies.Readiness,
+		apiKey:       dependencies.APIKey,
+		endpoints:    dependencies.Endpoints,
+		events:       dependencies.Events,
+		deliveries:   dependencies.Deliveries,
+		metrics:      dependencies.Metrics,
+		httpObserver: dependencies.HTTPObserver,
+		startedAt:    time.Now().UTC(),
 	}
 }
 
@@ -44,6 +54,9 @@ func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /health/live", s.live)
 	mux.HandleFunc("GET /health/ready", s.ready)
+	if s.metrics != nil {
+		mux.Handle("GET /metrics", s.metrics)
+	}
 
 	private := http.NewServeMux()
 	private.HandleFunc("POST /v1/endpoints", s.createEndpoint)
@@ -81,12 +94,20 @@ func (s *Server) accessLog(next http.Handler) http.Handler {
 		started := time.Now()
 		response := &responseWriter{ResponseWriter: w, status: http.StatusOK}
 		next.ServeHTTP(response, r)
+		duration := time.Since(started)
+		route := r.Pattern
+		if route == "" {
+			route = "unmatched"
+		}
+		if s.httpObserver != nil {
+			s.httpObserver.ObserveHTTPRequest(r.Method, route, response.status, duration)
+		}
 		s.logger.Info("request completed",
 			"method", r.Method,
 			"path", r.URL.Path,
 			"status", response.status,
 			"bytes", response.bytes,
-			"duration", time.Since(started),
+			"duration", duration,
 		)
 	})
 }
