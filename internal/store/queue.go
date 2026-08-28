@@ -108,19 +108,30 @@ type Job struct {
 	Endpoint delivery.Endpoint
 }
 
+type CircuitOutcome string
+
+const (
+	CircuitNone    CircuitOutcome = ""
+	CircuitFailure CircuitOutcome = "failure"
+	CircuitSuccess CircuitOutcome = "success"
+)
+
 type AttemptResult struct {
-	DeliveryID    string
-	WorkerID      string
-	LeaseToken    string
-	AttemptNumber int
-	Decision      delivery.Decision
-	StatusCode    *int
-	ResponseBody  string
-	ErrorMessage  string
-	Duration      time.Duration
-	StartedAt     time.Time
-	CompletedAt   time.Time
-	NextAttemptAt time.Time
+	DeliveryID       string
+	WorkerID         string
+	LeaseToken       string
+	AttemptNumber    int
+	Decision         delivery.Decision
+	StatusCode       *int
+	ResponseBody     string
+	ErrorMessage     string
+	Duration         time.Duration
+	StartedAt        time.Time
+	CompletedAt      time.Time
+	NextAttemptAt    time.Time
+	CircuitOutcome   CircuitOutcome
+	CircuitThreshold int
+	CircuitCooldown  time.Duration
 }
 
 type recoveredLease struct {
@@ -182,6 +193,7 @@ func (s *Store) FinishAttempt(ctx context.Context, result AttemptResult) (delive
 	}()
 
 	var status delivery.Status
+	var endpointID string
 	err = tx.QueryRow(ctx, `
         UPDATE deliveries
         SET status = CASE
@@ -206,7 +218,7 @@ func (s *Store) FinishAttempt(ctx context.Context, result AttemptResult) (delive
           AND locked_by = $2
           AND lease_token = $3
           AND attempt_count = $4
-        RETURNING status`,
+        RETURNING status, endpoint_id::text`,
 		result.DeliveryID,
 		result.WorkerID,
 		result.LeaseToken,
@@ -216,7 +228,7 @@ func (s *Store) FinishAttempt(ctx context.Context, result AttemptResult) (delive
 		result.ErrorMessage,
 		result.CompletedAt,
 		result.NextAttemptAt,
-	).Scan(&status)
+	).Scan(&status, &endpointID)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return "", ErrLeaseLost
 	}
@@ -242,6 +254,30 @@ func (s *Store) FinishAttempt(ctx context.Context, result AttemptResult) (delive
 	)
 	if err != nil {
 		return "", fmt.Errorf("record delivery attempt: %w", err)
+	}
+
+	switch result.CircuitOutcome {
+	case CircuitFailure:
+		_, err = tx.Exec(ctx, `
+            UPDATE endpoints
+            SET consecutive_failures = consecutive_failures + 1,
+                circuit_open_until = CASE
+                    WHEN consecutive_failures + 1 >= $2
+                    THEN GREATEST(COALESCE(circuit_open_until, now()), now() + $3 * interval '1 millisecond')
+                    ELSE circuit_open_until
+                END,
+                updated_at = now()
+            WHERE id = $1`, endpointID, result.CircuitThreshold, result.CircuitCooldown.Milliseconds())
+	case CircuitSuccess:
+		_, err = tx.Exec(ctx, `
+            UPDATE endpoints
+            SET consecutive_failures = 0,
+                circuit_open_until = NULL,
+                updated_at = now()
+            WHERE id = $1`, endpointID)
+	}
+	if err != nil {
+		return "", fmt.Errorf("update endpoint circuit: %w", err)
 	}
 
 	if err = tx.Commit(ctx); err != nil {
@@ -366,8 +402,8 @@ func validateAttemptResult(result AttemptResult) error {
 	if result.StatusCode == nil && strings.TrimSpace(result.ErrorMessage) == "" {
 		return errors.New("error message is required without status code")
 	}
-	if result.StatusCode == nil && result.Decision != delivery.DecisionRetry {
-		return errors.New("transport error must be retried")
+	if result.StatusCode == nil && result.Decision == delivery.DecisionSucceed {
+		return errors.New("successful result requires a status code")
 	}
 	if result.StatusCode != nil && delivery.Evaluate(*result.StatusCode, nil) != result.Decision {
 		return errors.New("decision does not match status code")
@@ -380,6 +416,12 @@ func validateAttemptResult(result AttemptResult) error {
 	}
 	if result.Decision == delivery.DecisionRetry && !result.NextAttemptAt.After(result.CompletedAt) {
 		return errors.New("next attempt must be after completion")
+	}
+	if result.CircuitOutcome != CircuitNone && result.CircuitOutcome != CircuitFailure && result.CircuitOutcome != CircuitSuccess {
+		return errors.New("invalid circuit outcome")
+	}
+	if result.CircuitOutcome == CircuitFailure && (result.CircuitThreshold < 1 || result.CircuitCooldown < time.Millisecond) {
+		return errors.New("invalid circuit breaker configuration")
 	}
 	return nil
 }

@@ -26,6 +26,14 @@ func TestValidateAttemptResult(t *testing.T) {
 	if err := validateAttemptResult(valid); err != nil {
 		t.Fatalf("valid result rejected: %v", err)
 	}
+	permanentFailure := valid
+	permanentFailure.StatusCode = nil
+	permanentFailure.ErrorMessage = "invalid encrypted secret"
+	permanentFailure.Decision = delivery.DecisionDiscard
+	permanentFailure.NextAttemptAt = time.Time{}
+	if err := validateAttemptResult(permanentFailure); err != nil {
+		t.Fatalf("permanent failure rejected: %v", err)
+	}
 
 	tests := []struct {
 		name   string
@@ -38,10 +46,10 @@ func TestValidateAttemptResult(t *testing.T) {
 		{name: "invalid decision", mutate: func(r *AttemptResult) { r.Decision = "unknown" }},
 		{name: "invalid status", mutate: func(r *AttemptResult) { value := 99; r.StatusCode = &value }},
 		{name: "missing outcome", mutate: func(r *AttemptResult) { r.StatusCode = nil; r.ErrorMessage = "" }},
-		{name: "transport error discarded", mutate: func(r *AttemptResult) {
+		{name: "statusless success", mutate: func(r *AttemptResult) {
 			r.StatusCode = nil
 			r.ErrorMessage = "reset"
-			r.Decision = delivery.DecisionDiscard
+			r.Decision = delivery.DecisionSucceed
 		}},
 		{name: "status decision mismatch", mutate: func(r *AttemptResult) { value := 204; r.StatusCode = &value }},
 		{name: "negative duration", mutate: func(r *AttemptResult) { r.Duration = -time.Second }},
