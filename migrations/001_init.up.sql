@@ -31,14 +31,19 @@ CREATE TABLE deliveries (
     max_attempts smallint NOT NULL CHECK (max_attempts BETWEEN 1 AND 100),
     next_attempt_at timestamptz NOT NULL DEFAULT now(),
     locked_by text,
+    lease_token uuid,
+    locked_at timestamptz,
     locked_until timestamptz,
     last_status_code integer CHECK (last_status_code BETWEEN 100 AND 599),
     last_error text NOT NULL DEFAULT '',
     last_completed_at timestamptz,
     created_at timestamptz NOT NULL DEFAULT now(),
     updated_at timestamptz NOT NULL DEFAULT now(),
+    CHECK ((locked_by IS NULL) = (lease_token IS NULL)),
+    CHECK ((locked_by IS NULL) = (locked_at IS NULL)),
     CHECK ((locked_by IS NULL) = (locked_until IS NULL)),
     CHECK ((status = 'processing') = (locked_by IS NOT NULL)),
+    CHECK (locked_until IS NULL OR locked_until > locked_at),
     CHECK (attempt_count <= max_attempts)
 );
 

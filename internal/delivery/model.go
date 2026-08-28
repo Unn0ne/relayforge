@@ -16,16 +16,17 @@ const (
 )
 
 type Endpoint struct {
-	ID               string
-	Name             string
-	URL              string
-	Secret           []byte
-	Timeout          time.Duration
-	MaxAttempts      int
-	DisabledAt       *time.Time
-	CircuitOpenUntil *time.Time
-	CreatedAt        time.Time
-	UpdatedAt        time.Time
+	ID                  string
+	Name                string
+	URL                 string
+	SecretCiphertext    []byte
+	Timeout             time.Duration
+	MaxAttempts         int
+	ConsecutiveFailures int
+	DisabledAt          *time.Time
+	CircuitOpenUntil    *time.Time
+	CreatedAt           time.Time
+	UpdatedAt           time.Time
 }
 
 type Event struct {
@@ -46,6 +47,8 @@ type Delivery struct {
 	MaxAttempts     int
 	NextAttemptAt   time.Time
 	LockedBy        string
+	LeaseToken      string
+	LockedAt        *time.Time
 	LockedUntil     *time.Time
 	LastStatusCode  int
 	LastError       string

@@ -19,7 +19,7 @@ The project is built as a production-oriented portfolio service rather than a fr
 
 ## Current state
 
-The service exposes liveness and database-backed readiness endpoints, manages a bounded PostgreSQL connection pool, and supports graceful shutdown. The initial schema models endpoints, idempotent events, leased deliveries, and immutable delivery attempts.
+The service exposes liveness and database-backed readiness endpoints, manages a bounded PostgreSQL connection pool, and supports graceful shutdown. The durable queue uses `FOR UPDATE SKIP LOCKED`, expiring leases, per-claim fencing tokens, and immutable delivery attempts.
 
 ```bash
 make run
