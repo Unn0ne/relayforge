@@ -16,7 +16,7 @@ import (
 	"github.com/Unn0ne/relayforge/internal/endpoint"
 )
 
-const maximumJSONBody = 64 << 10
+const maximumEndpointBody = 64 << 10
 
 var errUnsupportedMediaType = errors.New("Content-Type must be application/json")
 
@@ -50,7 +50,7 @@ type endpointResponse struct {
 
 func (s *Server) createEndpoint(w http.ResponseWriter, r *http.Request) {
 	var request createEndpointRequest
-	if err := decodeJSON(w, r, &request); err != nil {
+	if err := decodeJSON(w, r, &request, maximumEndpointBody); err != nil {
 		if errors.Is(err, errUnsupportedMediaType) {
 			writeError(w, http.StatusUnsupportedMediaType, "unsupported_media_type", err.Error())
 			return
@@ -153,13 +153,13 @@ func endpointView(value delivery.Endpoint) endpointResponse {
 	}
 }
 
-func decodeJSON(w http.ResponseWriter, r *http.Request, target any) error {
+func decodeJSON(w http.ResponseWriter, r *http.Request, target any, maximumBytes int64) error {
 	mediaType, _, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
 	if err != nil || mediaType != "application/json" {
 		return errUnsupportedMediaType
 	}
 
-	r.Body = http.MaxBytesReader(w, r.Body, maximumJSONBody)
+	r.Body = http.MaxBytesReader(w, r.Body, maximumBytes)
 	decoder := json.NewDecoder(r.Body)
 	decoder.DisallowUnknownFields()
 	if err = decoder.Decode(target); err != nil {

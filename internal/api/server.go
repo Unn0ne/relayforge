@@ -15,15 +15,17 @@ type Server struct {
 	readiness func(context.Context) error
 	apiKey    string
 	endpoints EndpointService
+	events    EventService
 	startedAt time.Time
 }
 
-func New(logger *slog.Logger, ready func(context.Context) error, apiKey string, endpoints EndpointService) *Server {
+func New(logger *slog.Logger, ready func(context.Context) error, apiKey string, endpoints EndpointService, events EventService) *Server {
 	return &Server{
 		logger:    logger,
 		readiness: ready,
 		apiKey:    apiKey,
 		endpoints: endpoints,
+		events:    events,
 		startedAt: time.Now().UTC(),
 	}
 }
@@ -38,6 +40,7 @@ func (s *Server) Handler() http.Handler {
 	private.HandleFunc("GET /v1/endpoints", s.listEndpoints)
 	private.HandleFunc("GET /v1/endpoints/{endpoint_id}", s.getEndpoint)
 	private.HandleFunc("DELETE /v1/endpoints/{endpoint_id}", s.disableEndpoint)
+	private.HandleFunc("POST /v1/events", s.publishEvent)
 	mux.Handle("/v1/", s.authenticate(private))
 	return s.accessLog(mux)
 }

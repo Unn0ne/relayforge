@@ -56,6 +56,18 @@ curl -X POST http://localhost:8080/v1/endpoints \
 
 The generated signing secret is returned only by the create operation. Subsequent reads never expose the encrypted value.
 
+## Event API
+
+```bash
+curl -X POST http://localhost:8080/v1/events \
+  -H "Authorization: Bearer $RELAYFORGE_API_KEY" \
+  -H "Idempotency-Key: invoice-123-paid" \
+  -H "Content-Type: application/json" \
+  -d '{"endpoint_id":"<endpoint-id>","type":"invoice.paid","payload":{"id":"invoice-123"}}'
+```
+
+Reusing an idempotency key with the same event returns the original event and delivery IDs. Reusing it with a different type or payload returns `409 Conflict`.
+
 ## License
 
 MIT

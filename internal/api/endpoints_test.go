@@ -18,7 +18,7 @@ const testAPIKey = "01234567890123456789012345678901"
 
 func TestEndpointAPIRequiresAuthentication(t *testing.T) {
 	service := &endpointServiceStub{}
-	handler := New(testLogger(), readyStub, testAPIKey, service).Handler()
+	handler := New(testLogger(), readyStub, testAPIKey, service, nil).Handler()
 	request := httptest.NewRequest(http.MethodGet, "/v1/endpoints", nil)
 	response := httptest.NewRecorder()
 
@@ -52,7 +52,7 @@ func TestCreateEndpoint(t *testing.T) {
 			Secret: "returned-once",
 		},
 	}
-	handler := New(testLogger(), readyStub, testAPIKey, service).Handler()
+	handler := New(testLogger(), readyStub, testAPIKey, service, nil).Handler()
 	request := authenticatedRequest(http.MethodPost, "/v1/endpoints", `{"name":"billing","url":"https://example.com/hooks"}`)
 	response := httptest.NewRecorder()
 
@@ -78,7 +78,7 @@ func TestCreateEndpoint(t *testing.T) {
 
 func TestCreateEndpointRejectsUnknownField(t *testing.T) {
 	service := &endpointServiceStub{}
-	handler := New(testLogger(), readyStub, testAPIKey, service).Handler()
+	handler := New(testLogger(), readyStub, testAPIKey, service, nil).Handler()
 	request := authenticatedRequest(http.MethodPost, "/v1/endpoints", `{"name":"billing","url":"https://example.com","unknown":true}`)
 	response := httptest.NewRecorder()
 
@@ -94,7 +94,7 @@ func TestCreateEndpointRejectsUnknownField(t *testing.T) {
 
 func TestCreateEndpointRequiresJSON(t *testing.T) {
 	service := &endpointServiceStub{}
-	handler := New(testLogger(), readyStub, testAPIKey, service).Handler()
+	handler := New(testLogger(), readyStub, testAPIKey, service, nil).Handler()
 	request := httptest.NewRequest(http.MethodPost, "/v1/endpoints", bytes.NewBufferString("name=billing"))
 	request.Header.Set("Authorization", "Bearer "+testAPIKey)
 	request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
@@ -109,7 +109,7 @@ func TestCreateEndpointRequiresJSON(t *testing.T) {
 
 func TestGetEndpointNotFound(t *testing.T) {
 	service := &endpointServiceStub{getError: endpoint.ErrNotFound}
-	handler := New(testLogger(), readyStub, testAPIKey, service).Handler()
+	handler := New(testLogger(), readyStub, testAPIKey, service, nil).Handler()
 	request := authenticatedRequest(http.MethodGet, "/v1/endpoints/0f4d9e5f-aac0-48d1-aa48-df706d70be39", "")
 	response := httptest.NewRecorder()
 
