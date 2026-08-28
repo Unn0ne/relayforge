@@ -22,6 +22,7 @@ The project is built as a production-oriented portfolio service rather than a fr
 The service exposes liveness and database-backed readiness endpoints, manages a bounded PostgreSQL connection pool, and supports graceful shutdown. The durable queue uses `FOR UPDATE SKIP LOCKED`, expiring leases, per-claim fencing tokens, and immutable delivery attempts.
 
 ```bash
+export RELAYFORGE_MASTER_KEY="$(openssl rand -base64 32)"
 make run
 curl http://localhost:8080/health/live
 ```
@@ -38,6 +39,7 @@ curl http://localhost:8080/health/live
 | `DATABASE_MIN_CONNECTIONS` | `1` |
 | `DATABASE_MAX_CONNECTIONS` | `10` |
 | `DATABASE_CONNECT_TIMEOUT` | `5s` |
+| `RELAYFORGE_MASTER_KEY` | required 32-byte key encoded as base64 |
 
 ## License
 

@@ -1,6 +1,7 @@
 package config
 
 import (
+	"encoding/base64"
 	"fmt"
 	"log/slog"
 	"os"
@@ -18,6 +19,7 @@ type Config struct {
 	DatabaseMinConnections int32
 	DatabaseMaxConnections int32
 	DatabaseConnectTimeout time.Duration
+	MasterKey              []byte
 }
 
 func Load() (Config, error) {
@@ -61,6 +63,11 @@ func Load() (Config, error) {
 		return Config{}, fmt.Errorf("DATABASE_MIN_CONNECTIONS must not exceed DATABASE_MAX_CONNECTIONS")
 	}
 
+	masterKey, err := encryptionKey("RELAYFORGE_MASTER_KEY")
+	if err != nil {
+		return Config{}, err
+	}
+
 	return Config{
 		HTTPAddr:               value("HTTP_ADDR", ":8080"),
 		ReadHeaderTimeout:      readHeaderTimeout,
@@ -70,7 +77,23 @@ func Load() (Config, error) {
 		DatabaseMinConnections: int32(databaseMinConnections),
 		DatabaseMaxConnections: int32(databaseMaxConnections),
 		DatabaseConnectTimeout: databaseConnectTimeout,
+		MasterKey:              masterKey,
 	}, nil
+}
+
+func encryptionKey(name string) ([]byte, error) {
+	raw := strings.TrimSpace(os.Getenv(name))
+	if raw == "" {
+		return nil, fmt.Errorf("%s is required", name)
+	}
+	key, err := base64.StdEncoding.DecodeString(raw)
+	if err != nil {
+		return nil, fmt.Errorf("decode %s: %w", name, err)
+	}
+	if len(key) != 32 {
+		return nil, fmt.Errorf("%s must decode to 32 bytes", name)
+	}
+	return key, nil
 }
 
 func value(key, fallback string) string {

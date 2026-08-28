@@ -1,6 +1,7 @@
 package config
 
 import (
+	"encoding/base64"
 	"testing"
 	"time"
 )
@@ -28,6 +29,9 @@ func TestLoad(t *testing.T) {
 	if cfg.DatabaseConnectTimeout != 3*time.Second {
 		t.Fatalf("DatabaseConnectTimeout = %s", cfg.DatabaseConnectTimeout)
 	}
+	if len(cfg.MasterKey) != 32 {
+		t.Fatalf("MasterKey length = %d", len(cfg.MasterKey))
+	}
 }
 
 func TestLoadRejectsInvalidPoolRange(t *testing.T) {
@@ -49,6 +53,24 @@ func TestLoadRejectsInvalidDuration(t *testing.T) {
 	}
 }
 
+func TestLoadRejectsMissingMasterKey(t *testing.T) {
+	setValidEnvironment(t)
+	t.Setenv("RELAYFORGE_MASTER_KEY", "")
+
+	if _, err := Load(); err == nil {
+		t.Fatal("expected missing key error")
+	}
+}
+
+func TestLoadRejectsInvalidMasterKey(t *testing.T) {
+	setValidEnvironment(t)
+	t.Setenv("RELAYFORGE_MASTER_KEY", base64.StdEncoding.EncodeToString([]byte("short")))
+
+	if _, err := Load(); err == nil {
+		t.Fatal("expected invalid key error")
+	}
+}
+
 func setValidEnvironment(t *testing.T) {
 	t.Helper()
 	t.Setenv("HTTP_ADDR", ":8080")
@@ -59,4 +81,5 @@ func setValidEnvironment(t *testing.T) {
 	t.Setenv("DATABASE_MIN_CONNECTIONS", "1")
 	t.Setenv("DATABASE_MAX_CONNECTIONS", "10")
 	t.Setenv("DATABASE_CONNECT_TIMEOUT", "3s")
+	t.Setenv("RELAYFORGE_MASTER_KEY", base64.StdEncoding.EncodeToString(make([]byte, 32)))
 }
