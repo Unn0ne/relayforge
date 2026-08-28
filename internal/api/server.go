@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"log/slog"
 	"net/http"
@@ -9,11 +10,12 @@ import (
 
 type Server struct {
 	logger    *slog.Logger
+	readiness func(context.Context) error
 	startedAt time.Time
 }
 
-func New(logger *slog.Logger) *Server {
-	return &Server{logger: logger, startedAt: time.Now().UTC()}
+func New(logger *slog.Logger, ready func(context.Context) error) *Server {
+	return &Server{logger: logger, readiness: ready, startedAt: time.Now().UTC()}
 }
 
 func (s *Server) Handler() http.Handler {
@@ -30,7 +32,15 @@ func (s *Server) live(w http.ResponseWriter, _ *http.Request) {
 	})
 }
 
-func (s *Server) ready(w http.ResponseWriter, _ *http.Request) {
+func (s *Server) ready(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := context.WithTimeout(r.Context(), time.Second)
+	defer cancel()
+
+	if err := s.readiness(ctx); err != nil {
+		s.logger.Warn("readiness check failed", "error", err)
+		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"status": "not_ready"})
+		return
+	}
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ready"})
 }
 

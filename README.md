@@ -19,7 +19,7 @@ The project is built as a production-oriented portfolio service rather than a fr
 
 ## Current state
 
-The service exposes liveness and readiness endpoints and supports graceful shutdown.
+The service exposes liveness and database-backed readiness endpoints, manages a bounded PostgreSQL connection pool, and supports graceful shutdown. The initial schema models endpoints, idempotent events, leased deliveries, and immutable delivery attempts.
 
 ```bash
 make run
@@ -34,8 +34,11 @@ curl http://localhost:8080/health/live
 | `READ_HEADER_TIMEOUT` | `5s` |
 | `SHUTDOWN_TIMEOUT` | `10s` |
 | `LOG_LEVEL` | `info` |
+| `DATABASE_URL` | `postgres://relayforge:relayforge@localhost:5432/relayforge?sslmode=disable` |
+| `DATABASE_MIN_CONNECTIONS` | `1` |
+| `DATABASE_MAX_CONNECTIONS` | `10` |
+| `DATABASE_CONNECT_TIMEOUT` | `5s` |
 
 ## License
 
 MIT
-
