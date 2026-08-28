@@ -11,7 +11,7 @@ import (
 )
 
 func TestLiveness(t *testing.T) {
-	handler := New(testLogger(), func(context.Context) error { return nil }, "test-api-key", nil, nil).Handler()
+	handler := New(testLogger(), Dependencies{Readiness: func(context.Context) error { return nil }, APIKey: "test-api-key"}).Handler()
 	request := httptest.NewRequest(http.MethodGet, "/health/live", nil)
 	response := httptest.NewRecorder()
 
@@ -42,7 +42,7 @@ func TestReadiness(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			handler := New(testLogger(), tt.check, "test-api-key", nil, nil).Handler()
+			handler := New(testLogger(), Dependencies{Readiness: tt.check, APIKey: "test-api-key"}).Handler()
 			request := httptest.NewRequest(http.MethodGet, "/health/ready", nil)
 			response := httptest.NewRecorder()
 

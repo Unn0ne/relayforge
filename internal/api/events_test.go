@@ -22,7 +22,7 @@ func TestPublishEvent(t *testing.T) {
 			},
 		},
 	}
-	handler := New(testLogger(), readyStub, testAPIKey, nil, service).Handler()
+	handler := New(testLogger(), Dependencies{Readiness: readyStub, APIKey: testAPIKey, Events: service}).Handler()
 	request := authenticatedRequest(http.MethodPost, "/v1/events", `{"endpoint_id":"0f4d9e5f-aac0-48d1-aa48-df706d70be39","type":"invoice.paid","payload":{"id":"invoice-id"}}`)
 	request.Header.Set("Idempotency-Key", "request-id")
 	response := httptest.NewRecorder()
@@ -49,7 +49,7 @@ func TestPublishEvent(t *testing.T) {
 
 func TestPublishEventMapsIdempotencyConflict(t *testing.T) {
 	service := &eventServiceStub{err: fmt.Errorf("enqueue event: %w", eventing.ErrIdempotencyConflict)}
-	handler := New(testLogger(), readyStub, testAPIKey, nil, service).Handler()
+	handler := New(testLogger(), Dependencies{Readiness: readyStub, APIKey: testAPIKey, Events: service}).Handler()
 	request := authenticatedRequest(http.MethodPost, "/v1/events", `{"endpoint_id":"0f4d9e5f-aac0-48d1-aa48-df706d70be39","type":"invoice.paid","payload":{}}`)
 	request.Header.Set("Idempotency-Key", "request-id")
 	response := httptest.NewRecorder()
@@ -63,7 +63,7 @@ func TestPublishEventMapsIdempotencyConflict(t *testing.T) {
 
 func TestPublishEventRejectsLargeBody(t *testing.T) {
 	service := &eventServiceStub{}
-	handler := New(testLogger(), readyStub, testAPIKey, nil, service).Handler()
+	handler := New(testLogger(), Dependencies{Readiness: readyStub, APIKey: testAPIKey, Events: service}).Handler()
 	request := authenticatedRequest(http.MethodPost, "/v1/events", `{"endpoint_id":"0f4d9e5f-aac0-48d1-aa48-df706d70be39","type":"invoice.paid","payload":"`+string(make([]byte, maximumEventBody))+`"}`)
 	request.Header.Set("Idempotency-Key", "request-id")
 	response := httptest.NewRecorder()

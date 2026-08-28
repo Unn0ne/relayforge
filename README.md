@@ -68,6 +68,19 @@ curl -X POST http://localhost:8080/v1/events \
 
 Reusing an idempotency key with the same event returns the original event and delivery IDs. Reusing it with a different type or payload returns `409 Conflict`.
 
+## Delivery API
+
+```bash
+curl -H "Authorization: Bearer $RELAYFORGE_API_KEY" \
+  http://localhost:8080/v1/deliveries/<delivery-id>
+
+curl -X POST \
+  -H "Authorization: Bearer $RELAYFORGE_API_KEY" \
+  http://localhost:8080/v1/deliveries/<delivery-id>/replay
+```
+
+Inspection returns the source event and the immutable attempt history. Only dead deliveries can be replayed. Replay preserves attempt numbering and grants a fresh endpoint-sized retry budget.
+
 ## License
 
 MIT

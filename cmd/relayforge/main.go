@@ -14,6 +14,7 @@ import (
 	"github.com/Unn0ne/relayforge/internal/api"
 	"github.com/Unn0ne/relayforge/internal/config"
 	"github.com/Unn0ne/relayforge/internal/database"
+	"github.com/Unn0ne/relayforge/internal/delivery"
 	"github.com/Unn0ne/relayforge/internal/endpoint"
 	"github.com/Unn0ne/relayforge/internal/eventing"
 	"github.com/Unn0ne/relayforge/internal/secure"
@@ -58,10 +59,17 @@ func run() error {
 		AllowPrivateTargets: cfg.AllowPrivateTargets,
 	})
 	eventService := eventing.New(repository)
+	deliveryService := delivery.NewService(repository)
 
 	server := &http.Server{
-		Addr:              cfg.HTTPAddr,
-		Handler:           api.New(logger, db.Ping, cfg.APIKey, endpointService, eventService).Handler(),
+		Addr: cfg.HTTPAddr,
+		Handler: api.New(logger, api.Dependencies{
+			Readiness:  db.Ping,
+			APIKey:     cfg.APIKey,
+			Endpoints:  endpointService,
+			Events:     eventService,
+			Deliveries: deliveryService,
+		}).Handler(),
 		ReadHeaderTimeout: cfg.ReadHeaderTimeout,
 	}
 

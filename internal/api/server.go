@@ -11,22 +11,32 @@ import (
 )
 
 type Server struct {
-	logger    *slog.Logger
-	readiness func(context.Context) error
-	apiKey    string
-	endpoints EndpointService
-	events    EventService
-	startedAt time.Time
+	logger     *slog.Logger
+	readiness  func(context.Context) error
+	apiKey     string
+	endpoints  EndpointService
+	events     EventService
+	deliveries DeliveryService
+	startedAt  time.Time
 }
 
-func New(logger *slog.Logger, ready func(context.Context) error, apiKey string, endpoints EndpointService, events EventService) *Server {
+type Dependencies struct {
+	Readiness  func(context.Context) error
+	APIKey     string
+	Endpoints  EndpointService
+	Events     EventService
+	Deliveries DeliveryService
+}
+
+func New(logger *slog.Logger, dependencies Dependencies) *Server {
 	return &Server{
-		logger:    logger,
-		readiness: ready,
-		apiKey:    apiKey,
-		endpoints: endpoints,
-		events:    events,
-		startedAt: time.Now().UTC(),
+		logger:     logger,
+		readiness:  dependencies.Readiness,
+		apiKey:     dependencies.APIKey,
+		endpoints:  dependencies.Endpoints,
+		events:     dependencies.Events,
+		deliveries: dependencies.Deliveries,
+		startedAt:  time.Now().UTC(),
 	}
 }
 
@@ -41,6 +51,8 @@ func (s *Server) Handler() http.Handler {
 	private.HandleFunc("GET /v1/endpoints/{endpoint_id}", s.getEndpoint)
 	private.HandleFunc("DELETE /v1/endpoints/{endpoint_id}", s.disableEndpoint)
 	private.HandleFunc("POST /v1/events", s.publishEvent)
+	private.HandleFunc("GET /v1/deliveries/{delivery_id}", s.getDelivery)
+	private.HandleFunc("POST /v1/deliveries/{delivery_id}/replay", s.replayDelivery)
 	mux.Handle("/v1/", s.authenticate(private))
 	return s.accessLog(mux)
 }
