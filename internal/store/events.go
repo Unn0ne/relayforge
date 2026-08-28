@@ -79,7 +79,6 @@ func (s *Store) EnqueueEvent(ctx context.Context, params eventing.EnqueueParams)
 	result.Event.Payload = json.RawMessage(payload)
 	result.Duplicate = result.Event.ID != params.EventID
 
-	var lastStatusCode *int
 	var lockedBy *string
 	var leaseToken *string
 	err = tx.QueryRow(ctx, `
@@ -122,7 +121,7 @@ func (s *Store) EnqueueEvent(ctx context.Context, params eventing.EnqueueParams)
 		&leaseToken,
 		&result.Delivery.LockedAt,
 		&result.Delivery.LockedUntil,
-		&lastStatusCode,
+		&result.Delivery.LastStatusCode,
 		&result.Delivery.LastError,
 		&result.Delivery.LastCompletedAt,
 		&result.Delivery.CreatedAt,
@@ -130,9 +129,6 @@ func (s *Store) EnqueueEvent(ctx context.Context, params eventing.EnqueueParams)
 	)
 	if err != nil {
 		return eventing.Enqueued{}, fmt.Errorf("upsert delivery: %w", err)
-	}
-	if lastStatusCode != nil {
-		result.Delivery.LastStatusCode = *lastStatusCode
 	}
 	if lockedBy != nil {
 		result.Delivery.LockedBy = *lockedBy

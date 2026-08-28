@@ -50,7 +50,7 @@ type Delivery struct {
 	LeaseToken      string
 	LockedAt        *time.Time
 	LockedUntil     *time.Time
-	LastStatusCode  int
+	LastStatusCode  *int
 	LastError       string
 	LastCompletedAt *time.Time
 	CreatedAt       time.Time
@@ -61,9 +61,9 @@ type Attempt struct {
 	ID           string
 	DeliveryID   string
 	Number       int
-	StatusCode   int
+	StatusCode   *int
 	ResponseBody string
-	Error        string
+	ErrorMessage string
 	Duration     time.Duration
 	StartedAt    time.Time
 	CompletedAt  time.Time

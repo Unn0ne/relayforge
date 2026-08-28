@@ -299,7 +299,6 @@ func scanJob(row pgx.Row) (*Job, error) {
 	var job Job
 	var payload []byte
 	var timeoutMilliseconds int
-	var lastStatusCode *int
 
 	err := row.Scan(
 		&job.Delivery.ID,
@@ -313,7 +312,7 @@ func scanJob(row pgx.Row) (*Job, error) {
 		&job.Delivery.LeaseToken,
 		&job.Delivery.LockedAt,
 		&job.Delivery.LockedUntil,
-		&lastStatusCode,
+		&job.Delivery.LastStatusCode,
 		&job.Delivery.LastError,
 		&job.Delivery.LastCompletedAt,
 		&job.Delivery.CreatedAt,
@@ -342,9 +341,6 @@ func scanJob(row pgx.Row) (*Job, error) {
 
 	job.Event.Payload = json.RawMessage(payload)
 	job.Endpoint.Timeout = time.Duration(timeoutMilliseconds) * time.Millisecond
-	if lastStatusCode != nil {
-		job.Delivery.LastStatusCode = *lastStatusCode
-	}
 	return &job, nil
 }
 
@@ -358,8 +354,8 @@ func validateAttemptResult(result AttemptResult) error {
 	if strings.TrimSpace(result.LeaseToken) == "" {
 		return errors.New("lease token is required")
 	}
-	if result.AttemptNumber < 1 || result.AttemptNumber > 100 {
-		return errors.New("attempt number must be between 1 and 100")
+	if result.AttemptNumber < 1 || int64(result.AttemptNumber) > math.MaxInt32 {
+		return errors.New("attempt number is outside the supported range")
 	}
 	if result.Decision != delivery.DecisionSucceed && result.Decision != delivery.DecisionRetry && result.Decision != delivery.DecisionDiscard {
 		return errors.New("invalid delivery decision")
