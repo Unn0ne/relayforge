@@ -35,6 +35,9 @@ func TestLoad(t *testing.T) {
 	if cfg.APIKey != "01234567890123456789012345678901" {
 		t.Fatalf("APIKey = %q", cfg.APIKey)
 	}
+	if cfg.WorkerConcurrency != 8 || cfg.WorkerLeaseDuration != 45*time.Second {
+		t.Fatalf("worker config = %+v", cfg)
+	}
 }
 
 func TestLoadRejectsInvalidPoolRange(t *testing.T) {
@@ -92,6 +95,24 @@ func TestLoadRejectsInvalidBoolean(t *testing.T) {
 	}
 }
 
+func TestLoadRejectsShortWorkerLease(t *testing.T) {
+	setValidEnvironment(t)
+	t.Setenv("WORKER_LEASE_DURATION", "30s")
+
+	if _, err := Load(); err == nil {
+		t.Fatal("expected worker lease validation error")
+	}
+}
+
+func TestLoadRejectsInvalidRetryJitter(t *testing.T) {
+	setValidEnvironment(t)
+	t.Setenv("RETRY_JITTER", "1.5")
+
+	if _, err := Load(); err == nil {
+		t.Fatal("expected retry jitter validation error")
+	}
+}
+
 func setValidEnvironment(t *testing.T) {
 	t.Helper()
 	t.Setenv("HTTP_ADDR", ":8080")
@@ -106,4 +127,13 @@ func setValidEnvironment(t *testing.T) {
 	t.Setenv("RELAYFORGE_API_KEY", "01234567890123456789012345678901")
 	t.Setenv("ALLOW_HTTP_TARGETS", "false")
 	t.Setenv("ALLOW_PRIVATE_TARGETS", "false")
+	t.Setenv("WORKER_CONCURRENCY", "8")
+	t.Setenv("WORKER_POLL_INTERVAL", "250ms")
+	t.Setenv("WORKER_LEASE_DURATION", "45s")
+	t.Setenv("WORKER_FINISH_TIMEOUT", "5s")
+	t.Setenv("RETRY_BASE_DELAY", "1s")
+	t.Setenv("RETRY_MAX_DELAY", "5m")
+	t.Setenv("RETRY_JITTER", "0.2")
+	t.Setenv("CIRCUIT_FAILURE_THRESHOLD", "5")
+	t.Setenv("CIRCUIT_COOLDOWN", "30s")
 }

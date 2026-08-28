@@ -19,7 +19,7 @@ The project is built as a production-oriented portfolio service rather than a fr
 
 ## Current state
 
-The service exposes liveness and database-backed readiness endpoints, manages a bounded PostgreSQL connection pool, and supports graceful shutdown. The durable queue uses `FOR UPDATE SKIP LOCKED`, expiring leases, per-claim fencing tokens, and immutable delivery attempts.
+The service exposes liveness and database-backed readiness endpoints, manages a bounded PostgreSQL connection pool, and supports graceful shutdown. Concurrent workers claim deliveries through `FOR UPDATE SKIP LOCKED`, send signed requests through an SSRF-safe transport, persist immutable attempts, schedule jittered retries, and maintain endpoint circuit state.
 
 ```bash
 export RELAYFORGE_MASTER_KEY="$(openssl rand -base64 32)"
@@ -44,6 +44,15 @@ curl http://localhost:8080/health/live
 | `RELAYFORGE_API_KEY` | required bearer token with at least 32 characters |
 | `ALLOW_HTTP_TARGETS` | `false` |
 | `ALLOW_PRIVATE_TARGETS` | `false` |
+| `WORKER_CONCURRENCY` | `8` |
+| `WORKER_POLL_INTERVAL` | `250ms` |
+| `WORKER_LEASE_DURATION` | `45s` |
+| `WORKER_FINISH_TIMEOUT` | `5s` |
+| `RETRY_BASE_DELAY` | `1s` |
+| `RETRY_MAX_DELAY` | `5m` |
+| `RETRY_JITTER` | `0.2` |
+| `CIRCUIT_FAILURE_THRESHOLD` | `5` |
+| `CIRCUIT_COOLDOWN` | `30s` |
 
 ## Endpoint API
 

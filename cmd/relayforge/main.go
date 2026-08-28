@@ -19,6 +19,8 @@ import (
 	"github.com/Unn0ne/relayforge/internal/eventing"
 	"github.com/Unn0ne/relayforge/internal/secure"
 	"github.com/Unn0ne/relayforge/internal/store"
+	"github.com/Unn0ne/relayforge/internal/webhook"
+	"github.com/Unn0ne/relayforge/internal/worker"
 )
 
 func main() {
@@ -60,6 +62,27 @@ func run() error {
 	})
 	eventService := eventing.New(repository)
 	deliveryService := delivery.NewService(repository)
+	retryPolicy, err := delivery.NewRetryPolicy(cfg.RetryBaseDelay, cfg.RetryMaxDelay, cfg.RetryJitter)
+	if err != nil {
+		return fmt.Errorf("initialize retry policy: %w", err)
+	}
+	dispatcher := webhook.NewDispatcher(secretBox, webhook.Options{
+		AllowHTTP:           cfg.AllowHTTP,
+		AllowPrivateTargets: cfg.AllowPrivateTargets,
+	})
+	defer dispatcher.Close()
+	workerPool, err := worker.New(repository, dispatcher, logger, worker.Config{
+		Concurrency:      cfg.WorkerConcurrency,
+		PollInterval:     cfg.WorkerPollInterval,
+		LeaseDuration:    cfg.WorkerLeaseDuration,
+		FinishTimeout:    cfg.WorkerFinishTimeout,
+		RetryPolicy:      retryPolicy,
+		CircuitThreshold: cfg.CircuitFailureThreshold,
+		CircuitCooldown:  cfg.CircuitCooldown,
+	})
+	if err != nil {
+		return fmt.Errorf("initialize delivery workers: %w", err)
+	}
 
 	server := &http.Server{
 		Addr: cfg.HTTPAddr,
@@ -75,6 +98,11 @@ func run() error {
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
+	workersDone := make(chan struct{})
+	go func() {
+		workerPool.Run(ctx)
+		close(workersDone)
+	}()
 
 	errCh := make(chan error, 1)
 	go func() {
@@ -82,14 +110,16 @@ func run() error {
 		errCh <- server.ListenAndServe()
 	}()
 
+	var serveErr error
 	select {
 	case <-ctx.Done():
 		logger.Info("shutdown started")
 	case err = <-errCh:
 		if !errors.Is(err, http.ErrServerClosed) {
-			return fmt.Errorf("serve http: %w", err)
+			serveErr = fmt.Errorf("serve http: %w", err)
 		}
 	}
+	stop()
 
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), cfg.ShutdownTimeout)
 	defer cancel()
@@ -104,6 +134,15 @@ func run() error {
 			return fmt.Errorf("stop http server: %w", err)
 		}
 	case <-time.After(100 * time.Millisecond):
+	}
+
+	select {
+	case <-workersDone:
+	case <-shutdownCtx.Done():
+		return errors.New("delivery workers did not stop before shutdown timeout")
+	}
+	if serveErr != nil {
+		return serveErr
 	}
 
 	logger.Info("shutdown completed")
