@@ -1,0 +1,62 @@
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-relayforge}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-relayforge}
+      POSTGRES_DB: ${POSTGRES_DB:-relayforge}
+    ports:
+      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 2s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+
+  migrate:
+    image: migrate/migrate:v4.19.1
+    command:
+      - -path=/migrations
+      - -database=postgres://${POSTGRES_USER:-relayforge}:${POSTGRES_PASSWORD:-relayforge}@postgres:5432/${POSTGRES_DB:-relayforge}?sslmode=disable
+      - up
+    volumes:
+      - ./migrations:/migrations:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
+  relayforge:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      HTTP_ADDR: :8080
+      DATABASE_URL: postgres://${POSTGRES_USER:-relayforge}:${POSTGRES_PASSWORD:-relayforge}@postgres:5432/${POSTGRES_DB:-relayforge}?sslmode=disable
+      RELAYFORGE_MASTER_KEY: ${RELAYFORGE_MASTER_KEY:?copy .env.example to .env}
+      RELAYFORGE_API_KEY: ${RELAYFORGE_API_KEY:?copy .env.example to .env}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      ALLOW_HTTP_TARGETS: ${ALLOW_HTTP_TARGETS:-false}
+      ALLOW_PRIVATE_TARGETS: ${ALLOW_PRIVATE_TARGETS:-false}
+      WORKER_CONCURRENCY: ${WORKER_CONCURRENCY:-8}
+    ports:
+      - "127.0.0.1:${HTTP_PORT:-8080}:8080"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    init: true
+    stop_grace_period: 15s
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
