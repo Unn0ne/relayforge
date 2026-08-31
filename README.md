@@ -4,7 +4,7 @@ RelayForge is a reliable webhook delivery service written in Go. It accepts even
 
 The project is built as a production-oriented portfolio service rather than a framework demo. The implementation is developed in small, verified increments.
 
-## Planned capabilities
+## Capabilities
 
 - idempotent event ingestion
 - durable PostgreSQL-backed delivery queue
@@ -13,20 +13,40 @@ The project is built as a production-oriented portfolio service rather than a fr
 - HMAC request signing
 - encrypted endpoint secrets
 - SSRF-resistant outbound requests
-- circuit breaking and delivery rate limits
+- endpoint circuit breaking
 - Prometheus metrics and structured logs
-- Docker Compose development environment
+- versioned migrations and a hardened Docker Compose environment
 
 ## Current state
 
-The service exposes liveness and database-backed readiness endpoints, manages a bounded PostgreSQL connection pool, and supports graceful shutdown. Concurrent workers claim deliveries through `FOR UPDATE SKIP LOCKED`, send signed requests through an SSRF-safe transport, persist immutable attempts, schedule jittered retries, and maintain endpoint circuit state.
+The service exposes liveness, database-backed readiness, and Prometheus endpoints, manages a bounded PostgreSQL connection pool, and supports graceful shutdown. Concurrent workers claim deliveries through `FOR UPDATE SKIP LOCKED`, send signed requests through an SSRF-safe transport, persist immutable attempts, schedule jittered retries, and maintain endpoint circuit state.
+
+## Quick start with Docker
+
+```bash
+cp .env.example .env
+make compose-up
+curl http://localhost:8080/health/ready
+curl http://localhost:8080/metrics
+```
+
+The credentials in `.env.example` are only for an isolated local environment. Replace both RelayForge keys before using the stack on a shared machine. Migrations run in a one-shot container and are safe to execute again against the same volume.
+
+```bash
+make compose-logs
+make compose-down
+```
+
+## Run from source
 
 ```bash
 export RELAYFORGE_MASTER_KEY="$(openssl rand -base64 32)"
 export RELAYFORGE_API_KEY="$(openssl rand -hex 32)"
 make run
-curl http://localhost:8080/health/live
+curl http://localhost:8080/health/ready
 ```
+
+PostgreSQL must already be running and migration `001` must be applied when the service is run outside Compose.
 
 ## Configuration
 
@@ -101,6 +121,18 @@ RelayForge sends the event payload as a JSON `POST` request with these headers:
 - `X-RelayForge-Signature`
 
 The signature format is `v1=<hex HMAC-SHA256>`. The signed bytes are `<timestamp>.<delivery_id>.<raw_body>`. Redirects are never followed, environment proxies are ignored, and every resolved IP is checked before a connection is opened.
+
+## Development
+
+```bash
+make test
+make lint
+make docker-config
+```
+
+Set `TEST_DATABASE_URL` and run `make test-integration` to execute the PostgreSQL queue suite and the end-to-end worker delivery test. Each integration test uses its own schema, so Go packages can run in parallel safely.
+
+The application container runs as an unprivileged user with a read-only root filesystem, all Linux capabilities dropped, and `no-new-privileges` enabled. Only loopback ports are published by the development stack.
 
 ## License
 

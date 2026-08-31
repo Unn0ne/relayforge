@@ -1,7 +1,12 @@
-.PHONY: build run test test-integration lint migrate-up migrate-down
+.PHONY: build run test test-integration lint verify migrate-up migrate-down docker-build docker-config compose-up compose-down compose-logs
+
+BINARY ?= bin/relayforge
+COMPOSE ?= docker compose
+ENV_FILE ?= .env
 
 build:
-	go build -o bin/relayforge ./cmd/relayforge
+	@mkdir -p "$(dir $(BINARY))"
+	go build -trimpath -o "$(BINARY)" ./cmd/relayforge
 
 run:
 	go run ./cmd/relayforge
@@ -10,14 +15,34 @@ test:
 	go test -race ./...
 
 test-integration:
-	@test -n "$(TEST_DATABASE_URL)"
-	go test -race -count=1 ./internal/store -run Integration
+	@test -n "$(TEST_DATABASE_URL)" || (echo "TEST_DATABASE_URL is required" && exit 1)
+	go test -race -count=1 ./internal/store ./internal/worker -run Integration
 
 lint:
 	golangci-lint run
+
+verify: test lint docker-config
 
 migrate-up:
 	@psql "$(DATABASE_URL)" -v ON_ERROR_STOP=1 -f migrations/001_init.up.sql
 
 migrate-down:
 	@psql "$(DATABASE_URL)" -v ON_ERROR_STOP=1 -f migrations/001_init.down.sql
+
+docker-build:
+	docker build -t relayforge:local .
+
+docker-config:
+	$(COMPOSE) --env-file .env.example config --quiet
+
+compose-up:
+	@test -f "$(ENV_FILE)" || (echo "$(ENV_FILE) is missing; copy .env.example first" && exit 1)
+	$(COMPOSE) --env-file "$(ENV_FILE)" up -d --build
+
+compose-down:
+	@test -f "$(ENV_FILE)" || (echo "$(ENV_FILE) is missing" && exit 1)
+	$(COMPOSE) --env-file "$(ENV_FILE)" down
+
+compose-logs:
+	@test -f "$(ENV_FILE)" || (echo "$(ENV_FILE) is missing" && exit 1)
+	$(COMPOSE) --env-file "$(ENV_FILE)" logs -f relayforge
