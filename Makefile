@@ -1,4 +1,4 @@
-.PHONY: build run test test-integration lint api-lint verify migrate-up migrate-down docker-build docker-config compose-up compose-down compose-logs
+.PHONY: build run test test-integration lint api-lint verify bench migrate-up migrate-down docker-build docker-config compose-up compose-down compose-logs
 
 BINARY ?= bin/relayforge
 COMPOSE ?= docker compose
@@ -25,6 +25,10 @@ api-lint:
 	npx --yes @redocly/cli@2.51.1 lint openapi.yaml
 
 verify: test lint api-lint docker-config
+
+bench:
+	@test -n "$(ENDPOINT_ID)" || (echo "ENDPOINT_ID is required" && exit 1)
+	go run ./cmd/relaybench -endpoint-id "$(ENDPOINT_ID)" $(BENCH_ARGS)
 
 migrate-up:
 	@psql "$(DATABASE_URL)" -v ON_ERROR_STOP=1 -f migrations/001_init.up.sql

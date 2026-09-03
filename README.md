@@ -135,6 +135,15 @@ make docker-config
 
 Set `TEST_DATABASE_URL` and run `make test-integration` to execute the PostgreSQL queue suite and the end-to-end worker delivery test. Each integration test uses its own schema, so Go packages can run in parallel safely.
 
+To measure ingestion throughput against a running instance, create an endpoint and run:
+
+```bash
+export RELAYFORGE_API_KEY="<api-key>"
+make bench ENDPOINT_ID="<endpoint-id>" BENCH_ARGS="-requests 10000 -concurrency 50"
+```
+
+The runner prints a JSON report with accepted and failed requests, status counts, throughput, and p50/p95/p99 latency. Every request gets a unique idempotency key, so the result measures new event ingestion rather than duplicate lookup performance.
+
 The application container runs as an unprivileged user with a read-only root filesystem, all Linux capabilities dropped, and `no-new-privileges` enabled. Only loopback ports are published by the development stack.
 
 ## License
