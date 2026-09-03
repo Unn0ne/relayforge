@@ -1,4 +1,4 @@
-.PHONY: build run test test-integration lint verify migrate-up migrate-down docker-build docker-config compose-up compose-down compose-logs
+.PHONY: build run test test-integration lint api-lint verify migrate-up migrate-down docker-build docker-config compose-up compose-down compose-logs
 
 BINARY ?= bin/relayforge
 COMPOSE ?= docker compose
@@ -21,7 +21,10 @@ test-integration:
 lint:
 	golangci-lint run
 
-verify: test lint docker-config
+api-lint:
+	npx --yes @redocly/cli@2.51.1 lint openapi.yaml
+
+verify: test lint api-lint docker-config
 
 migrate-up:
 	@psql "$(DATABASE_URL)" -v ON_ERROR_STOP=1 -f migrations/001_init.up.sql

@@ -1,0 +1,589 @@
+openapi: 3.1.0
+info:
+  title: RelayForge API
+  version: 0.1.0
+  description: Durable webhook ingestion, delivery inspection, and replay API.
+  license:
+    name: MIT
+    identifier: MIT
+servers:
+  - url: http://localhost:8080
+tags:
+  - name: health
+    description: Process and dependency health.
+  - name: endpoints
+    description: Webhook destination lifecycle.
+  - name: events
+    description: Idempotent event ingestion.
+  - name: deliveries
+    description: Delivery state, attempt history, and replay.
+  - name: observability
+    description: Prometheus-compatible service telemetry.
+paths:
+  /health/live:
+    get:
+      tags: [health]
+      summary: Check whether the process is running
+      operationId: getLiveness
+      security: []
+      responses:
+        "200":
+          description: The process is running.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Liveness"
+  /health/ready:
+    get:
+      tags: [health]
+      summary: Check whether the service can accept traffic
+      operationId: getReadiness
+      security: []
+      responses:
+        "200":
+          description: PostgreSQL is available.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Readiness"
+        "503":
+          description: PostgreSQL is unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NotReady"
+  /metrics:
+    get:
+      tags: [observability]
+      summary: Read Prometheus metrics
+      operationId: getMetrics
+      security: []
+      responses:
+        "200":
+          description: Metrics in the Prometheus text exposition format.
+          content:
+            text/plain:
+              schema:
+                type: string
+  /v1/endpoints:
+    post:
+      tags: [endpoints]
+      summary: Create a webhook endpoint
+      operationId: createEndpoint
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateEndpoint"
+      responses:
+        "201":
+          description: Endpoint created. The signing secret is returned only once.
+          headers:
+            Location:
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CreatedEndpoint"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "415":
+          $ref: "#/components/responses/UnsupportedMediaType"
+        "500":
+          $ref: "#/components/responses/InternalError"
+    get:
+      tags: [endpoints]
+      summary: List webhook endpoints
+      operationId: listEndpoints
+      parameters:
+        - $ref: "#/components/parameters/Limit"
+      responses:
+        "200":
+          description: Endpoints ordered by creation time.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EndpointList"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /v1/endpoints/{endpoint_id}:
+    parameters:
+      - $ref: "#/components/parameters/EndpointID"
+    get:
+      tags: [endpoints]
+      summary: Get a webhook endpoint
+      operationId: getEndpoint
+      responses:
+        "200":
+          description: Endpoint details without the signing secret.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Endpoint"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+    delete:
+      tags: [endpoints]
+      summary: Disable a webhook endpoint
+      operationId: disableEndpoint
+      responses:
+        "204":
+          description: Endpoint disabled.
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /v1/events:
+    post:
+      tags: [events]
+      summary: Accept an event for delivery
+      operationId: publishEvent
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PublishEvent"
+      responses:
+        "202":
+          description: Event accepted or matched to an earlier idempotent request.
+          headers:
+            Location:
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PublishedEvent"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "415":
+          $ref: "#/components/responses/UnsupportedMediaType"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /v1/deliveries/{delivery_id}:
+    parameters:
+      - $ref: "#/components/parameters/DeliveryID"
+    get:
+      tags: [deliveries]
+      summary: Inspect a delivery and its attempts
+      operationId: getDelivery
+      responses:
+        "200":
+          description: Delivery, source event, and immutable attempt history.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeliveryDetails"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /v1/deliveries/{delivery_id}/replay:
+    parameters:
+      - $ref: "#/components/parameters/DeliveryID"
+    post:
+      tags: [deliveries]
+      summary: Replay a dead delivery
+      operationId: replayDelivery
+      responses:
+        "202":
+          description: Delivery queued with a fresh retry budget.
+          headers:
+            Location:
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Delivery"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/InternalError"
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+  parameters:
+    EndpointID:
+      name: endpoint_id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    DeliveryID:
+      name: delivery_id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      schema:
+        type: string
+        minLength: 1
+        maxLength: 200
+    Limit:
+      name: limit
+      in: query
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 50
+  responses:
+    BadRequest:
+      description: The request is malformed or failed validation.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    Unauthorized:
+      description: A valid bearer token is required.
+      headers:
+        WWW-Authenticate:
+          schema:
+            type: string
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    NotFound:
+      description: The requested resource does not exist.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    Conflict:
+      description: The request conflicts with current resource state or prior idempotent input.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    UnsupportedMediaType:
+      description: The request body must use application/json.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    InternalError:
+      description: The request could not be completed because of an internal error.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+  schemas:
+    Liveness:
+      type: object
+      additionalProperties: false
+      required: [status, started_at]
+      properties:
+        status:
+          type: string
+          const: ok
+        started_at:
+          type: string
+          format: date-time
+    Readiness:
+      type: object
+      additionalProperties: false
+      required: [status]
+      properties:
+        status:
+          type: string
+          const: ready
+    NotReady:
+      type: object
+      additionalProperties: false
+      required: [status]
+      properties:
+        status:
+          type: string
+          const: not_ready
+    Error:
+      type: object
+      additionalProperties: false
+      required: [error]
+      properties:
+        error:
+          type: object
+          additionalProperties: false
+          required: [code, message]
+          properties:
+            code:
+              type: string
+            message:
+              type: string
+    CreateEndpoint:
+      type: object
+      additionalProperties: false
+      required: [name, url]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 100
+        url:
+          type: string
+          format: uri
+        timeout_ms:
+          type: integer
+          default: 5000
+          oneOf:
+            - const: 0
+            - minimum: 100
+              maximum: 30000
+        max_attempts:
+          type: integer
+          default: 8
+          oneOf:
+            - const: 0
+            - minimum: 1
+              maximum: 100
+    Endpoint:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - name
+        - url
+        - timeout_ms
+        - max_attempts
+        - consecutive_failures
+        - created_at
+        - updated_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        url:
+          type: string
+          format: uri
+        secret:
+          type: string
+          readOnly: true
+        timeout_ms:
+          type: integer
+          minimum: 100
+          maximum: 30000
+        max_attempts:
+          type: integer
+          minimum: 1
+          maximum: 100
+        consecutive_failures:
+          type: integer
+          minimum: 0
+        circuit_open_until:
+          type: string
+          format: date-time
+        disabled_at:
+          type: string
+          format: date-time
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    CreatedEndpoint:
+      allOf:
+        - $ref: "#/components/schemas/Endpoint"
+        - required: [secret]
+    EndpointList:
+      type: object
+      additionalProperties: false
+      required: [data]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/Endpoint"
+    PublishEvent:
+      type: object
+      additionalProperties: false
+      required: [endpoint_id, type, payload]
+      properties:
+        endpoint_id:
+          type: string
+          format: uuid
+        type:
+          type: string
+          minLength: 1
+          maxLength: 100
+          pattern: "^[A-Za-z0-9][A-Za-z0-9._:-]{0,99}$"
+        payload: {}
+    PublishedEvent:
+      type: object
+      additionalProperties: false
+      required: [event_id, delivery_id, status, duplicate]
+      properties:
+        event_id:
+          type: string
+          format: uuid
+        delivery_id:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum: [pending, processing, retrying, succeeded, dead]
+        duplicate:
+          type: boolean
+    Delivery:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - event_id
+        - endpoint_id
+        - status
+        - attempt_count
+        - max_attempts
+        - next_attempt_at
+        - created_at
+        - updated_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        event_id:
+          type: string
+          format: uuid
+        endpoint_id:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum: [pending, processing, retrying, succeeded, dead]
+        attempt_count:
+          type: integer
+          minimum: 0
+        max_attempts:
+          type: integer
+          minimum: 1
+        next_attempt_at:
+          type: string
+          format: date-time
+        locked_until:
+          type: string
+          format: date-time
+        last_status_code:
+          type: integer
+          minimum: 100
+          maximum: 599
+        last_error:
+          type: string
+        last_completed_at:
+          type: string
+          format: date-time
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    Event:
+      type: object
+      additionalProperties: false
+      required: [id, endpoint_id, type, payload, idempotency_key, created_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        endpoint_id:
+          type: string
+          format: uuid
+        type:
+          type: string
+        payload: {}
+        idempotency_key:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+    Attempt:
+      type: object
+      additionalProperties: false
+      required: [id, number, duration_ms, started_at, completed_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        number:
+          type: integer
+          minimum: 1
+        status_code:
+          type: integer
+          minimum: 100
+          maximum: 599
+        response_body:
+          type: string
+        error:
+          type: string
+        duration_ms:
+          type: integer
+          minimum: 0
+        started_at:
+          type: string
+          format: date-time
+        completed_at:
+          type: string
+          format: date-time
+    DeliveryDetails:
+      type: object
+      additionalProperties: false
+      required: [delivery, event, attempts]
+      properties:
+        delivery:
+          $ref: "#/components/schemas/Delivery"
+        event:
+          $ref: "#/components/schemas/Event"
+        attempts:
+          type: array
+          items:
+            $ref: "#/components/schemas/Attempt"
+security:
+  - bearerAuth: []

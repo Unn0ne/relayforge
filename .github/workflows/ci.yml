@@ -54,6 +54,7 @@ jobs:
         with:
           version: v2.13.2
           args: --timeout=5m
+      - run: npx --yes @redocly/cli@2.51.1 lint openapi.yaml
 
   image:
     runs-on: ubuntu-latest

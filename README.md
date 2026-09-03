@@ -76,6 +76,8 @@ PostgreSQL must already be running and migration `001` must be applied when the 
 
 ## Endpoint API
 
+The complete contract is available in [openapi.yaml](openapi.yaml).
+
 ```bash
 curl -X POST http://localhost:8080/v1/endpoints \
   -H "Authorization: Bearer $RELAYFORGE_API_KEY" \
@@ -127,6 +129,7 @@ The signature format is `v1=<hex HMAC-SHA256>`. The signed bytes are `<timestamp
 ```bash
 make test
 make lint
+make api-lint
 make docker-config
 ```
 
