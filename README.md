@@ -1,5 +1,7 @@
 # RelayForge
 
+[![ci](https://github.com/Unn0ne/relayforge/actions/workflows/ci.yml/badge.svg)](https://github.com/Unn0ne/relayforge/actions/workflows/ci.yml)
+
 RelayForge is a reliable webhook delivery service written in Go. It accepts events once, delivers them asynchronously, and makes failed deliveries observable and recoverable.
 
 The project is built as a production-oriented portfolio service rather than a framework demo. The implementation is developed in small, verified increments.
@@ -151,6 +153,12 @@ make bench ENDPOINT_ID="<endpoint-id>" BENCH_ARGS="-requests 10000 -concurrency 
 The runner prints a JSON report with accepted and failed requests, status counts, throughput, and p50/p95/p99 latency. Every request gets a unique idempotency key, so the result measures new event ingestion rather than duplicate lookup performance.
 
 The application container runs as an unprivileged user with a read-only root filesystem, all Linux capabilities dropped, and `no-new-privileges` enabled. Only loopback ports are published by the development stack.
+
+## Releases
+
+Tagged releases contain checksummed Linux and macOS archives for AMD64 and ARM64. Each archive includes the binary, license, and README. Build metadata is available through `relayforge version` and `GET /version`.
+
+See [CHANGELOG.md](CHANGELOG.md) for release notes.
 
 ## License
 
