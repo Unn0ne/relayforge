@@ -1,4 +1,4 @@
-.PHONY: build run test test-integration lint api-lint verify bench migrate-up migrate-down docker-build docker-config compose-up compose-down compose-logs
+.PHONY: build run test test-integration lint vuln api-lint verify bench migrate-up migrate-down docker-build docker-config compose-up compose-down compose-logs
 
 BINARY ?= bin/relayforge
 COMPOSE ?= docker compose
@@ -26,10 +26,13 @@ test-integration:
 lint:
 	golangci-lint run
 
-api-lint:
-	npx --yes @redocly/cli@2.51.1 lint openapi.yaml
+vuln:
+	go run golang.org/x/vuln/cmd/govulncheck@v1.7.0 ./...
 
-verify: test lint api-lint docker-config
+api-lint:
+	npx --yes @redocly/cli@2.51.2 lint openapi.yaml
+
+verify: test lint vuln api-lint docker-config
 
 bench:
 	@test -n "$(ENDPOINT_ID)" || (echo "ENDPOINT_ID is required" && exit 1)

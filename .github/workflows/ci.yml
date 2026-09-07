@@ -54,7 +54,8 @@ jobs:
         with:
           version: v2.13.2
           args: --timeout=5m
-      - run: npx --yes @redocly/cli@2.51.1 lint openapi.yaml
+      - run: go run golang.org/x/vuln/cmd/govulncheck@v1.7.0 ./...
+      - run: npx --yes @redocly/cli@2.51.2 lint openapi.yaml
 
   image:
     runs-on: ubuntu-latest
