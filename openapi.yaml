@@ -65,6 +65,19 @@ paths:
             text/plain:
               schema:
                 type: string
+  /version:
+    get:
+      tags: [observability]
+      summary: Read service build information
+      operationId: getVersion
+      security: []
+      responses:
+        "200":
+          description: Version and source revision of the running binary.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BuildInfo"
   /v1/endpoints:
     post:
       tags: [endpoints]
@@ -356,6 +369,21 @@ components:
               type: string
             message:
               type: string
+    BuildInfo:
+      type: object
+      additionalProperties: false
+      required: [version, commit, built_at, go_version, dirty]
+      properties:
+        version:
+          type: string
+        commit:
+          type: string
+        built_at:
+          type: string
+        go_version:
+          type: string
+        dirty:
+          type: boolean
     CreateEndpoint:
       type: object
       additionalProperties: false

@@ -9,7 +9,10 @@ COPY . .
 
 ARG TARGETOS
 ARG TARGETARCH
-RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -trimpath -ldflags="-s -w" -o /out/relayforge ./cmd/relayforge
+ARG VERSION=dev
+ARG COMMIT=none
+ARG BUILD_DATE=unknown
+RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -trimpath -ldflags="-s -w -X github.com/Unn0ne/relayforge/internal/buildinfo.Version=$VERSION -X github.com/Unn0ne/relayforge/internal/buildinfo.Commit=$COMMIT -X github.com/Unn0ne/relayforge/internal/buildinfo.BuiltAt=$BUILD_DATE" -o /out/relayforge ./cmd/relayforge
 
 FROM alpine:3.23
 

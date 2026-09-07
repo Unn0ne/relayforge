@@ -28,6 +28,7 @@ cp .env.example .env
 make compose-up
 curl http://localhost:8080/health/ready
 curl http://localhost:8080/metrics
+curl http://localhost:8080/version
 ```
 
 The credentials in `.env.example` are only for an isolated local environment. Replace both RelayForge keys before using the stack on a shared machine. Migrations run in a one-shot container and are safe to execute again against the same volume.
@@ -47,6 +48,11 @@ curl http://localhost:8080/health/ready
 ```
 
 PostgreSQL must already be running and migration `001` must be applied when the service is run outside Compose.
+
+```bash
+make build VERSION=v0.1.0 COMMIT="$(git rev-parse --short HEAD)"
+./bin/relayforge version
+```
 
 ## Configuration
 

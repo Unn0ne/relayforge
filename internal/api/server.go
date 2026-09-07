@@ -8,6 +8,8 @@ import (
 	"net/http"
 	"strings"
 	"time"
+
+	"github.com/Unn0ne/relayforge/internal/buildinfo"
 )
 
 type Server struct {
@@ -19,6 +21,7 @@ type Server struct {
 	deliveries   DeliveryService
 	metrics      http.Handler
 	httpObserver HTTPObserver
+	buildInfo    buildinfo.Info
 	startedAt    time.Time
 }
 
@@ -46,6 +49,7 @@ func New(logger *slog.Logger, dependencies Dependencies) *Server {
 		deliveries:   dependencies.Deliveries,
 		metrics:      dependencies.Metrics,
 		httpObserver: dependencies.HTTPObserver,
+		buildInfo:    buildinfo.Current(),
 		startedAt:    time.Now().UTC(),
 	}
 }
@@ -54,6 +58,7 @@ func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /health/live", s.live)
 	mux.HandleFunc("GET /health/ready", s.ready)
+	mux.HandleFunc("GET /version", s.version)
 	if s.metrics != nil {
 		mux.Handle("GET /metrics", s.metrics)
 	}
@@ -68,6 +73,10 @@ func (s *Server) Handler() http.Handler {
 	private.HandleFunc("POST /v1/deliveries/{delivery_id}/replay", s.replayDelivery)
 	mux.Handle("/v1/", s.authenticate(private))
 	return s.accessLog(mux)
+}
+
+func (s *Server) version(w http.ResponseWriter, _ *http.Request) {
+	writeJSON(w, http.StatusOK, s.buildInfo)
 }
 
 func (s *Server) live(w http.ResponseWriter, _ *http.Request) {

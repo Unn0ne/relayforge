@@ -2,8 +2,10 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 	"os"
@@ -12,6 +14,7 @@ import (
 	"time"
 
 	"github.com/Unn0ne/relayforge/internal/api"
+	"github.com/Unn0ne/relayforge/internal/buildinfo"
 	"github.com/Unn0ne/relayforge/internal/config"
 	"github.com/Unn0ne/relayforge/internal/database"
 	"github.com/Unn0ne/relayforge/internal/delivery"
@@ -25,10 +28,24 @@ import (
 )
 
 func main() {
+	if len(os.Args) == 2 && (os.Args[1] == "version" || os.Args[1] == "--version") {
+		if err := writeVersion(os.Stdout); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		return
+	}
 	if err := run(); err != nil {
 		slog.Error("relayforge stopped", "error", err)
 		os.Exit(1)
 	}
+}
+
+func writeVersion(output io.Writer) error {
+	if err := json.NewEncoder(output).Encode(buildinfo.Current()); err != nil {
+		return fmt.Errorf("write version: %w", err)
+	}
+	return nil
 }
 
 func run() error {
@@ -39,6 +56,8 @@ func run() error {
 
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: cfg.LogLevel}))
 	slog.SetDefault(logger)
+	build := buildinfo.Current()
+	logger.Info("relayforge starting", "version", build.Version, "commit", build.Commit, "built_at", build.BuiltAt, "dirty", build.Dirty)
 
 	databaseCtx, databaseCancel := context.WithTimeout(context.Background(), cfg.DatabaseConnectTimeout)
 	db, err := database.Open(databaseCtx, database.Config{

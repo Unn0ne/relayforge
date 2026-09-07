@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"io"
 	"log/slog"
@@ -53,6 +54,28 @@ func TestReadiness(t *testing.T) {
 				t.Fatalf("status = %d, want %d", response.Code, tt.wantStatus)
 			}
 		})
+	}
+}
+
+func TestVersion(t *testing.T) {
+	handler := New(testLogger(), Dependencies{Readiness: func(context.Context) error { return nil }, APIKey: "test-api-key"}).Handler()
+	request := httptest.NewRequest(http.MethodGet, "/version", nil)
+	response := httptest.NewRecorder()
+
+	handler.ServeHTTP(response, request)
+
+	if response.Code != http.StatusOK {
+		t.Fatalf("status = %d", response.Code)
+	}
+	var body struct {
+		Version   string `json:"version"`
+		GoVersion string `json:"go_version"`
+	}
+	if err := json.NewDecoder(response.Body).Decode(&body); err != nil {
+		t.Fatal(err)
+	}
+	if body.Version == "" || body.GoVersion == "" {
+		t.Fatalf("body = %+v", body)
 	}
 }
 
