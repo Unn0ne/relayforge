@@ -1,4 +1,4 @@
-FROM golang:1.26.8-alpine3.23 AS build
+FROM golang:1.27.1-alpine3.23 AS build
 
 WORKDIR /src
 
@@ -14,7 +14,7 @@ ARG COMMIT=none
 ARG BUILD_DATE=unknown
 RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -trimpath -ldflags="-s -w -X github.com/Unn0ne/relayforge/internal/buildinfo.Version=$VERSION -X github.com/Unn0ne/relayforge/internal/buildinfo.Commit=$COMMIT -X github.com/Unn0ne/relayforge/internal/buildinfo.BuiltAt=$BUILD_DATE" -o /out/relayforge ./cmd/relayforge
 
-FROM alpine:3.23
+FROM alpine:3.24
 
 RUN apk add --no-cache ca-certificates && addgroup -S -g 10001 relayforge && adduser -S -D -H -u 10001 -G relayforge relayforge
 
